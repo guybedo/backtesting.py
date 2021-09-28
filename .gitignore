@@ -21,3 +21,8 @@ doc/build/*
 *~*
 
 .venv/
+
+.project
+.pydevproject
+.python-version
+
