@@ -48,6 +48,7 @@ if __name__ == '__main__':
                 'matplotlib',
                 'scikit-learn',
                 'scikit-optimize',
+		'ccxt'
             ],
             'dev': [
                 'flake8',
