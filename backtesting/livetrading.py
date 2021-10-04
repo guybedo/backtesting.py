@@ -258,13 +258,11 @@ class Livetrading:
                  strategy: Type[Strategy],
                  data_fetcher: DataFetcher,
                  live_broker: LiveBroker,
-                 hearbeat=1 * 60,
-                 exclusive_orders=False):
+                 hearbeat=1 * 60):
         self._strategy = strategy
         self.data_fetcher = data_fetcher
         self.broker = live_broker
         self.hearbeat = hearbeat
-        self.exclusive_orders = exclusive_orders
 
     def run(self, **kwargs):
         while True:
