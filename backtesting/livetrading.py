@@ -44,14 +44,10 @@ class DataFetcher:
 
 class LiveBroker(_Broker):
 
-    def __init__(self, *, symbol, data, margin,
-                 trade_on_close, hedging, exclusive_orders):
+    def __init__(self, *, symbol, margin, exclusive_orders):
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
         self._symbol = symbol
-        self._data: _Data = data
         self._leverage = 1 / margin
-        self._trade_on_close = trade_on_close
-        self._hedging = hedging
         self._exclusive_orders = exclusive_orders
 
         self.orders: List[Order] = []
@@ -174,16 +170,9 @@ class LiveBroker(_Broker):
 
 class CcxtBroker(LiveBroker):
 
-    def __init__(self, symbol, data, margin,
-                 trade_on_close, hedging, exclusive_orders,
+    def __init__(self, symbol, margin, exclusive_orders,
                  exchange_id, api_key, secret, exchange_headers=None):
-        super().__init__(
-            symbol,
-            data,
-            margin,
-            trade_on_close,
-            hedging,
-            exclusive_orders)
+        super().__init__(symbol, margin, exclusive_orders)
         exchange_class = getattr(ccxt, exchange_id)
         self.exchange = exchange_class({
             'apiKey': api_key,
