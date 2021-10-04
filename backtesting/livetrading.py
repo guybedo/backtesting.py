@@ -3,7 +3,9 @@ Created on Sep 27, 2021
 
 @author: guybedo
 '''
+import logging
 from math import copysign
+from time import sleep
 from typing import _alias, CT_co, List
 import warnings
 
@@ -63,6 +65,9 @@ class LiveBroker(_Broker):
     def load_state(self):
         pass
 
+    def _close_order(self, order):
+        pass
+
     def _reduce_trade(self, trade: Trade, price: float, size: float):
         pass
 
@@ -71,6 +76,14 @@ class LiveBroker(_Broker):
 
     def _open_trade(self, price: float, size: int, sl: float, tp: float):
         pass
+
+    def _close_orders(self):
+        for order in self.orders:
+            self._close_order(order)
+
+    def _close_trades(self):
+        for trade in self.trades:
+            self._close_trade(trade)
 
     def new_order(self,
                   size: float,
@@ -139,10 +152,13 @@ class LiveBroker(_Broker):
                     for t in self.trades:
                         t.close()
                 pass
-            elif order.limit:
-                pass
-            elif order.stop:
-                pass
+            elif order.limit or order.stop:
+                self._create_order(
+                    order.size,
+                    order.limit,
+                    order.stop,
+                    order.sl,
+                    order.tp)
 
             if order.size <= 0 or abs(order.size) * price > self.margin_available * self._leverage:
                 self.orders.remove(order)
@@ -183,7 +199,7 @@ class CcxtBroker(LiveBroker):
     def load_state(self):
         self._load_balance()
         self._load_orders()
-        self._load_positions()
+        self._load_trades()
         self._load_history()
         self.position = Position(self)
 
@@ -198,40 +214,53 @@ class CcxtBroker(LiveBroker):
             limit=None,
             params=dict())
 
-    def _load_positions(self):
+    def _load_trades(self):
         self.trades = [
-            p for p in self.exchange.fetch_positions(
-                self._symbol,
-                params=dict())
+            Trade(
+                broker=self,
+                size=p['size'] * (1 if p['side'] == 'buy' else -1))
+            for p in self.exchange.fetch_positions(self._symbol, params=dict())
             if p['size'] > 0]
 
     def _load_history(self):
         self.closed_trades = None
-        pass
 
-    def _open_trade(self, price: float, size: int, sl: float, tp: float):
-        pass
-
-    def _close_trades(self):
-        for trade in self.trades:
-            self._close_trade(trade)
-
-    def _close_trade(self, trade: Trade):
-        side = 'sell' if trade.side == 'buy' else 'buy'
-        size = trade.size
+    def _open_trade(self, size: int, sl: float, tp: float):
+        if self.exclusive_orders:
+            self._close_trades()
+            self._close_orders()
+        side = 'buy' if size > 0 else 'sell'
         self.exchange.create_order(
             symbol=self._symbol,
             type="MARKET",
-            side="buy",
-            size=size,
+            side=side,
+            size=abs(size))
+        self.trades.append(Trade(broker=self, size=size))
+
+    def _close_trade(self, trade: Trade):
+        side = 'sell' if trade.size > 0 else 'buy'
+        self.exchange.create_order(
+            symbol=self._symbol,
+            type="MARKET",
+            side=side,
+            size=abs(trade.size),
             params={"reduceOnly": True})
         self.trades.remove(trade)
 
     def _reduce_trade(self, trade: Trade, price: float, size: float):
         pass
 
-    def _create_order(self, price: float, size: int, sl: float, tp: float):
+    def _create_order(self,
+                      size: float,
+                      limit: float = None,
+                      stop: float = None,
+                      sl: float = None,
+                      tp: float = None):
         pass
+
+    def _close_order(self, order):
+        self.exchange.cancel_order(order['id'])
+        self.orders.remove(order)
 
 
 class Livetrading:
@@ -251,9 +280,12 @@ class Livetrading:
     def run(self, **kwargs):
         while True:
             data = self.data_fetcher.get_data()
-            if not data[-1]['closed']:
-                continue
+            if data[-1]['closed']:
+                self._next(data, **kwargs)
+            sleep(self.hearbeat)
 
+    def _next(self, data, **kwargs):
+        try:
             data = data.copy(deep=False)
             sanitize_data(data)
             self._data: pd.DataFrame = data
@@ -276,6 +308,8 @@ class Livetrading:
             self.broker.load_state()
             strategy.next()
             self.broker.next()
+        except:
+            logging.error('Error processing data')
 
 
 def sanitize_data(data):
