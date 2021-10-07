@@ -345,8 +345,8 @@ class Livetrading:
             self.broker.load_state()
             strategy.next()
             self.broker.next()
-        except:
-            logging.error('Error processing data')
+        except Exception as ex:
+            logging.error('Error processing data', ex)
 
 
 def sanitize_data(data):
