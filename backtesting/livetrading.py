@@ -16,6 +16,7 @@ import ccxt
 
 import numpy as np
 import pandas as pd
+from datetime import datetime
 
 
 Type = _alias(type, CT_co, inst=False)
@@ -42,13 +43,53 @@ class DataFetcher:
         pass
 
 
+class Position(object):
+
+    symbol = None
+    side = None
+    size = None
+    entry_date = None
+    entry_price = None
+    exit_date = None
+    exit_price = None
+    pnl = None
+
+    def __init__(self):
+        pass
+
+
+class TradingDb(object):
+
+    def __init__(self):
+        pass
+
+    def find_most_recent_position(self):
+        pass
+
+    def find_open_positions(self, symbol, size=None):
+        pass
+
+    def save_position(self, position):
+        pass
+
+    def close_position(self, symbol, size, exit_price, exit_date):
+        open_positions = self.find_open_positions(symbol, size)
+        if not open_positions:
+            return
+        closed = open_positions[0]
+        closed.exit_price = exit_price
+        closed.exit_date = exit_date
+        self.save_position(closed)
+
+
 class LiveBroker(_Broker):
 
-    def __init__(self, *, symbol, margin, exclusive_orders):
+    def __init__(self, *, symbol, margin, exclusive_orders, repository):
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
         self._symbol = symbol
         self._leverage = 1 / margin
         self._exclusive_orders = exclusive_orders
+        self._repository = repository
 
         self.orders: List[Order] = []
         self.trades: List[Trade] = []
@@ -183,7 +224,7 @@ class CcxtBroker(LiveBroker):
 
     def _get_current_price(self):
         self._ticker = self._ticker or self.exchange.fetch_ticker(self._symbol)
-        return self._ticker.ask
+        return self._ticker['ask']
 
     def load_state(self):
         self._load_balance()
@@ -221,20 +262,34 @@ class CcxtBroker(LiveBroker):
         side = 'buy' if size > 0 else 'sell'
         self.exchange.create_order(
             symbol=self._symbol,
-            type="MARKET",
+            type="market",
             side=side,
-            size=abs(size))
+            amount=abs(size))
         self.trades.append(Trade(broker=self, size=size))
+        if self._repository:
+            self._repository.save_position(
+                Position(
+                    symbol=self._symbol,
+                    size=abs(size),
+                    side=side,
+                    entry_price=self._get_current_price(),
+                    entry_date=datetime.utcnow()))
 
     def _close_trade(self, trade: Trade):
         side = 'sell' if trade.size > 0 else 'buy'
         self.exchange.create_order(
             symbol=self._symbol,
-            type="MARKET",
+            type="market",
             side=side,
-            size=abs(trade.size),
+            amount=abs(trade.size),
             params={"reduceOnly": True})
         self.trades.remove(trade)
+        if self._repository:
+            self._repository.close_position(
+                symbol=self._symbol,
+                size=abs(trade.size),
+                exit_price=self._get_current_price(),
+                exit_date=datetime.utcnow())
 
     def _reduce_trade(self, trade: Trade, price: float, size: float):
         pass
