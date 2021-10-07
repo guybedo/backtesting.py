@@ -84,7 +84,7 @@ class TradingDb(object):
 
 class LiveBroker(_Broker):
 
-    def __init__(self, *, symbol, margin, exclusive_orders, repository):
+    def __init__(self, *, symbol, margin, exclusive_orders, repository=None):
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
         self._symbol = symbol
         self._leverage = 1 / margin
@@ -212,8 +212,8 @@ class LiveBroker(_Broker):
 class CcxtBroker(LiveBroker):
 
     def __init__(self, symbol, margin, exclusive_orders,
-                 exchange_id, api_key, secret, exchange_headers=None):
-        super().__init__(symbol, margin, exclusive_orders)
+                 exchange_id, api_key, secret, exchange_headers=None, repository=None):
+        super().__init__(symbol, margin, exclusive_orders, repository=repository)
         exchange_class = getattr(ccxt, exchange_id)
         self.exchange = exchange_class({
             'apiKey': api_key,
