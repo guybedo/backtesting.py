@@ -43,7 +43,7 @@ class DataFetcher:
         pass
 
 
-class Position(object):
+class DbPosition(object):
 
     symbol = None
     side = None
@@ -58,7 +58,7 @@ class Position(object):
         pass
 
 
-class TradingDb(object):
+class TradingRepository(object):
 
     def __init__(self):
         pass
@@ -69,17 +69,11 @@ class TradingDb(object):
     def find_open_positions(self, symbol, size=None):
         pass
 
-    def save_position(self, position):
+    def save_position(self, symbol, size, side, entry_price, entry_date):
         pass
 
-    def close_position(self, symbol, size, exit_price, exit_date):
-        open_positions = self.find_open_positions(symbol, size)
-        if not open_positions:
-            return
-        closed = open_positions[0]
-        closed.exit_price = exit_price
-        closed.exit_date = exit_date
-        self.save_position(closed)
+    def close_position(self, symbol, size, side, exit_price, exit_date):
+        pass
 
 
 class LiveBroker(_Broker):
@@ -268,14 +262,14 @@ class CcxtBroker(LiveBroker):
         self.trades.append(Trade(broker=self, size=size))
         if self._repository:
             self._repository.save_position(
-                Position(
-                    symbol=self._symbol,
-                    size=abs(size),
-                    side=side,
-                    entry_price=self._get_current_price(),
-                    entry_date=datetime.utcnow()))
+                symbol=self._symbol,
+                size=abs(size),
+                side=side,
+                entry_price=self._get_current_price(),
+                entry_date=datetime.utcnow())
 
     def _close_trade(self, trade: Trade):
+        original_side = 'buy' if trade.size > 0 else 'sell'
         side = 'sell' if trade.size > 0 else 'buy'
         self.exchange.create_order(
             symbol=self._symbol,
@@ -287,6 +281,7 @@ class CcxtBroker(LiveBroker):
         if self._repository:
             self._repository.close_position(
                 symbol=self._symbol,
+                side=original_side,
                 size=abs(trade.size),
                 exit_price=self._get_current_price(),
                 exit_date=datetime.utcnow())
