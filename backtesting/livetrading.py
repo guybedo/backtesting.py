@@ -17,6 +17,7 @@ import ccxt
 import numpy as np
 import pandas as pd
 from datetime import datetime
+import traceback
 
 
 Type = _alias(type, CT_co, inst=False)
@@ -77,6 +78,13 @@ class TradingRepository(object):
 
 
 class LiveBroker(_Broker):
+    _data = None
+    _ticker = None
+    _balance = None
+    orders = list()
+    open_orders = list()
+    trades = list()
+    closed_trades = list()
 
     def __init__(self, symbol, margin, exclusive_orders, repository=None):
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
@@ -109,7 +117,7 @@ class LiveBroker(_Broker):
         pass
 
     def _close_orders(self):
-        for order in self.orders:
+        for order in self.open_orders:
             self._close_order(order)
 
     def _close_trades(self):
@@ -176,30 +184,23 @@ class LiveBroker(_Broker):
             is_market_order = not order.limit and not order.stop
 
             if is_market_order:
-                if self._exclusive_orders:
-                    for o in self.orders:
-                        if not o.is_contingent:
-                            o.cancel()
-                    for t in self.trades:
-                        t.close()
-                pass
-            elif order.limit or order.stop:
+                size = order.size
+                if -1 < size < 1:
+                    size = copysign(
+                        (self.margin_available * self._leverage * abs(size)) / price,
+                        size)
+                self._open_trade(
+                    price,
+                    size,
+                    order.sl,
+                    order.tp)
+            else:
                 self._create_order(
                     order.size,
                     order.limit,
                     order.stop,
                     order.sl,
                     order.tp)
-
-            if order.size <= 0 or abs(order.size) * price > self.margin_available * self._leverage:
-                self.orders.remove(order)
-                continue
-
-            self._open_trade(
-                price,
-                order.size,
-                order.sl,
-                order.tp)
             self.orders.remove(order)
 
 
@@ -229,10 +230,10 @@ class CcxtBroker(LiveBroker):
 
     def _load_balance(self):
         self._balance = self._balance or self.exchange.fetch_balance()
-        self._free_usd_balance = self._balance['free']['USD']
+        self._cash = self._balance['free']['USD']
 
     def _load_orders(self):
-        self.orders = self.exchange.fetch_open_orders(
+        self.open_orders = self.exchange.fetch_open_orders(
             self._symbol,
             since=None,
             limit=None,
@@ -244,13 +245,13 @@ class CcxtBroker(LiveBroker):
                 broker=self,
                 size=p['size'] * (1 if p['side'] == 'buy' else -1))
             for p in self.exchange.fetch_positions(self._symbol, params=dict())
-            if p['size'] > 0]
+            if float(p['size']) > 0]
 
     def _load_history(self):
         self.closed_trades = None
 
-    def _open_trade(self, size: int, sl: float, tp: float):
-        if self.exclusive_orders:
+    def _open_trade(self, price, size: int, sl: float, tp: float):
+        if self._exclusive_orders:
             self._close_trades()
             self._close_orders()
         side = 'buy' if size > 0 else 'sell'
@@ -259,7 +260,6 @@ class CcxtBroker(LiveBroker):
             type="market",
             side=side,
             amount=abs(size))
-        self.trades.append(Trade(broker=self, size=size))
         if self._repository:
             self._repository.save_position(
                 symbol=self._symbol,
@@ -267,6 +267,7 @@ class CcxtBroker(LiveBroker):
                 side=side,
                 entry_price=self._get_current_price(),
                 entry_date=datetime.utcnow())
+        self._load_trades()
 
     def _close_trade(self, trade: Trade):
         original_side = 'buy' if trade.size > 0 else 'sell'
@@ -277,7 +278,6 @@ class CcxtBroker(LiveBroker):
             side=side,
             amount=abs(trade.size),
             params={"reduceOnly": True})
-        self.trades.remove(trade)
         if self._repository:
             self._repository.close_position(
                 symbol=self._symbol,
@@ -285,6 +285,7 @@ class CcxtBroker(LiveBroker):
                 size=abs(trade.size),
                 exit_price=self._get_current_price(),
                 exit_date=datetime.utcnow())
+        self._load_trades()
 
     def _reduce_trade(self, trade: Trade, price: float, size: float):
         pass
@@ -323,11 +324,11 @@ class Livetrading:
 
     def _next(self, data, **kwargs):
         try:
-            data = data.copy(deep=False)
-            sanitize_data(data)
-            self._data: pd.DataFrame = data
+            self._data: pd.DataFrame = data.copy(deep=False)
+            sanitize_data(self._data)
+            data = self.broker._data = _Data(self._data.copy(deep=False))
 
-            strategy: Strategy = self._strategy(self.live_broker, data, kwargs)
+            strategy: Strategy = self._strategy(self.broker, data, kwargs)
             strategy.init()
             data._update()  # Strategy.init might have changed/added to data.df
 
@@ -346,6 +347,7 @@ class Livetrading:
             strategy.next()
             self.broker.next()
         except Exception as ex:
+            traceback.format_exc()
             logging.error('Error processing data', ex)
 
 
