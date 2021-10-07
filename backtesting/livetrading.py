@@ -317,7 +317,7 @@ class Livetrading:
     def run(self, **kwargs):
         while True:
             data = self.data_fetcher.get_data()
-            if data[-1]['closed']:
+            if data.iloc[-1]['Closed']:
                 self._next(data, **kwargs)
             sleep(self.hearbeat)
 
