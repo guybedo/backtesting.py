@@ -84,7 +84,7 @@ class TradingDb(object):
 
 class LiveBroker(_Broker):
 
-    def __init__(self, *, symbol, margin, exclusive_orders, repository=None):
+    def __init__(self, symbol, margin, exclusive_orders, repository=None):
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
         self._symbol = symbol
         self._leverage = 1 / margin
