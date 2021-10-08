@@ -44,18 +44,12 @@ class DataFetcher:
         pass
 
 
-class DbPosition(object):
-
-    symbol = None
-    side = None
-    size = None
-    entry_date = None
-    entry_price = None
-    exit_date = None
-    exit_price = None
-    pnl = None
+class NotificationService(object):
 
     def __init__(self):
+        pass
+
+    def notify_open_trade(self, symbol, size, side, entry_price):
         pass
 
 
@@ -86,12 +80,14 @@ class LiveBroker(_Broker):
     trades = list()
     closed_trades = list()
 
-    def __init__(self, symbol, margin, exclusive_orders, repository=None):
+    def __init__(self, symbol, margin, exclusive_orders,
+                 repository: TradingRepository=None, notification_service: NotificationService=None):
         assert 0 < margin <= 1, f"margin should be between 0 and 1, is {margin}"
         self._symbol = symbol
         self._leverage = 1 / margin
         self._exclusive_orders = exclusive_orders
         self._repository = repository
+        self._notification_service = notification_service
 
         self.orders: List[Order] = []
         self.trades: List[Trade] = []
@@ -206,9 +202,14 @@ class LiveBroker(_Broker):
 
 class CcxtBroker(LiveBroker):
 
-    def __init__(self, symbol, margin, exclusive_orders,
-                 exchange_id, api_key, secret, exchange_headers=None, repository=None):
-        super().__init__(symbol, margin, exclusive_orders, repository=repository)
+    def __init__(self, symbol, margin, exclusive_orders, exchange_id, api_key, secret,
+                 exchange_headers=None, repository=None, notification_service: NotificationService=None):
+        super().__init__(
+            symbol,
+            margin,
+            exclusive_orders,
+            repository=repository,
+            notification_service=notification_service)
         exchange_class = getattr(ccxt, exchange_id)
         self.exchange = exchange_class({
             'apiKey': api_key,
@@ -243,7 +244,9 @@ class CcxtBroker(LiveBroker):
         self.trades = [
             Trade(
                 broker=self,
-                size=p['size'] * (1 if p['side'] == 'buy' else -1))
+                size=p['size'] * (1 if p['side'] == 'buy' else -1),
+                entry_price=p['entryPrice'],
+                entry_bar=None)
             for p in self.exchange.fetch_positions(self._symbol, params=dict())
             if float(p['size']) > 0]
 
@@ -267,6 +270,9 @@ class CcxtBroker(LiveBroker):
                 side=side,
                 entry_price=self._get_current_price(),
                 entry_date=datetime.utcnow())
+        if self._notification_service:
+            self._notification_service.notify_open_trade(
+                symbol, size, side, entry_price)
         self._load_trades()
 
     def _close_trade(self, trade: Trade):
@@ -316,10 +322,16 @@ class Livetrading:
         self.hearbeat = hearbeat
 
     def run(self, **kwargs):
+        current_candle_idx = None
         while True:
-            data = self.data_fetcher.get_data()
-            if data.iloc[-1]['Closed']:
-                self._next(data, **kwargs)
+            try:
+                data = self.data_fetcher.get_data()
+                is_new_candle = current_candle_idx is None or data.shape[0] > current_candle_idx
+                if is_new_candle and data.iloc[-1]['Closed']:
+                    current_candle_idx = data.shape[0]
+                    self._next(data, **kwargs)
+            except:
+                logging.error('Error running live trading', e)
             sleep(self.hearbeat)
 
     def _next(self, data, **kwargs):
