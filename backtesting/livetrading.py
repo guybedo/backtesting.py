@@ -272,7 +272,7 @@ class CcxtBroker(LiveBroker):
                 entry_date=datetime.utcnow())
         if self._notification_service:
             self._notification_service.notify_open_trade(
-                symbol, size, side, entry_price)
+                self._symbol, size, side, price)
         self._load_trades()
 
     def _close_trade(self, trade: Trade):
@@ -329,8 +329,15 @@ class Livetrading:
                 is_new_candle = current_candle_idx is None or data.shape[0] > current_candle_idx
                 if is_new_candle and data.iloc[-1]['Closed']:
                     current_candle_idx = data.shape[0]
+                    logging.info(
+                        'Processing new candle {idx}'.format(
+                            idx=current_candle_idx))
                     self._next(data, **kwargs)
-            except:
+                else:
+                    logging.info(
+                        'No new candle to process, current idx {idx}'.format(
+                            idx=current_candle_idx))
+            except Exception as e:
                 logging.error('Error running live trading', e)
             sleep(self.hearbeat)
 
