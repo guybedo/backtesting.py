@@ -331,11 +331,12 @@ class Livetrading:
                     current_candle_idx = data.shape[0]
                     logging.info(
                         'Processing new candle {idx}'.format(
-                            idx=current_candle_idx))
+                            idx=data.shape[0]))
                     self._next(data, **kwargs)
                 else:
                     logging.info(
-                        'No new candle to process, current idx {idx}'.format(
+                        'No new candle to process, data size {data_size}, candle idx {idx}'.format(
+                            data_size=data.shape[0],
                             idx=current_candle_idx))
             except Exception as e:
                 logging.error('Error running live trading', e)
