@@ -326,8 +326,9 @@ class Livetrading:
         while True:
             try:
                 data = self.data_fetcher.get_data()
+                data = data[data['Closed'] == True]
                 is_new_candle = current_candle_idx is None or data.shape[0] > current_candle_idx
-                if is_new_candle and data.iloc[-1]['Closed']:
+                if is_new_candle:
                     current_candle_idx = data.shape[0]
                     logging.info(
                         'Processing new candle {idx}'.format(
