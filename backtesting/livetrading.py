@@ -3,9 +3,12 @@ Created on Sep 27, 2021
 
 @author: guybedo
 '''
+from abc import abstractproperty, abstractmethod
+from datetime import datetime
 import logging
 from math import copysign
 from time import sleep
+import traceback
 from typing import _alias, CT_co, List
 import warnings
 
@@ -16,8 +19,6 @@ import ccxt
 
 import numpy as np
 import pandas as pd
-from datetime import datetime
-import traceback
 
 
 Type = _alias(type, CT_co, inst=False)
@@ -94,23 +95,44 @@ class LiveBroker(_Broker):
         self.position = Position(self)
         self.closed_trades: List[Trade] = []
 
+    @abstractmethod
     def _get_current_price(self):
         pass
 
+    @abstractmethod
     def load_state(self):
         pass
 
+    @abstractmethod
     def _close_order(self, order):
         pass
 
+    @abstractmethod
     def _reduce_trade(self, trade: Trade, price: float, size: float):
         pass
 
+    @abstractmethod
     def _close_trade(self, trade: Trade, price: float):
         pass
 
+    @abstractmethod
     def _open_trade(self, price: float, size: int, sl: float, tp: float):
         pass
+
+    @property
+    @abstractmethod
+    def equity_total(self) -> float:
+        return 0
+
+    @property
+    @abstractmethod
+    def equity_free(self) -> float:
+        return 0
+
+    @property
+    @abstractmethod
+    def equity_used(self) -> float:
+        return 0
 
     def _close_orders(self):
         for order in self.open_orders:
@@ -147,17 +169,6 @@ class LiveBroker(_Broker):
         """ Price at the last (current) close. """
         return self._data.Close[-1]
 
-    @property
-    def equity(self) -> float:
-        return self._cash + sum(trade.pl for trade in self.trades)
-
-    @property
-    def margin_available(self) -> float:
-        # From https://github.com/QuantConnect/Lean/pull/3768
-        margin_used = sum(
-            trade.value / self._leverage for trade in self.trades)
-        return max(0, self.equity - margin_used)
-
     def next(self):
         i = self._i = len(self._data) - 1
         self._process_orders()
@@ -182,9 +193,8 @@ class LiveBroker(_Broker):
             if is_market_order:
                 size = order.size
                 if -1 < size < 1:
-                    size = copysign(
-                        (self.margin_available * self._leverage * abs(size)) / price,
-                        size)
+                    available = self.equity_total if self._exclusive_orders else self.equity_free
+                    size = copysign(available / price, size)
                 self._open_trade(
                     price,
                     size,
