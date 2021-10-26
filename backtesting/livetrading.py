@@ -194,7 +194,7 @@ class LiveBroker(_Broker):
                 size = order.size
                 if -1 < size < 1:
                     available = self.equity_total if self._exclusive_orders else self.equity_free
-                    size = copysign(available / price, size)
+                    size = copysign(available * self._leverage * abs(size) / price, size)
                 self._open_trade(
                     price,
                     size,
