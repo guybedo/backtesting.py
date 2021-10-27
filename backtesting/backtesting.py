@@ -543,8 +543,13 @@ class Trade:
     def close(self, portion: float = 1.):
         """Place new `Order` to close `portion` of the trade at next market price."""
         assert 0 < portion <= 1, "portion must be a fraction between 0 and 1"
-        size = copysign(
-            max(1, round(abs(self.__size) * portion)), -self.__size)
+        is_fractional = self.size - int(self.size) != 0
+        if is_fractional:
+            size = copysign(
+                max(1, abs(self.__size) * portion), -self.__size)
+        else:
+            size = copysign(
+                max(1, round(abs(self.__size) * portion)), -self.__size)
         order = Order(self.__broker, size, parent_trade=self)
         self.__broker.orders.insert(0, order)
 
@@ -884,6 +889,7 @@ class _Broker:
                 if self._fractional_size:
                     size = copysign(
                         self.margin_available * self._leverage * abs(size) / adjusted_price, size)
+                    need_size = size
                 else:
                     size = copysign(int((self.margin_available * self._leverage * abs(size))
                                         // adjusted_price), size)
